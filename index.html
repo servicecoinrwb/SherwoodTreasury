@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sherwood Forest | Robinhood Testnet</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <style>
+        :root { --forest-green: #0b2916; --bright-green: #2ecc71; --gold: #f1c40f; --accent: #e67e22; }
+        body { font-family: 'Courier New', Courier, monospace; background: var(--forest-green); color: #ecf0f1; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .container { background: rgba(0,0,0,0.8); border: 2px solid var(--gold); border-radius: 10px; padding: 30px; width: 100%; max-width: 480px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        h1 { color: var(--gold); text-align: center; margin-bottom: 5px; font-size: 1.8rem; }
+        .subtitle { text-align: center; color: var(--bright-green); margin-bottom: 25px; font-size: 0.9rem; }
+        .stat-card { background: #1a1a1a; padding: 15px; border-radius: 5px; margin-bottom: 10px; border-left: 5px solid var(--gold); }
+        .stat-label { font-size: 0.7rem; color: var(--gold); text-transform: uppercase; }
+        .stat-value { font-size: 1.4rem; font-weight: bold; display: block; }
+        .action-group { margin-top: 20px; border-top: 1px solid #333; padding-top: 20px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 4px; border: none; background: #222; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; text-transform: uppercase; transition: 0.2s; margin-bottom: 10px; }
+        .btn-deposit { background: var(--gold); color: black; }
+        .btn-deposit:hover { background: #d4ac0d; }
+        .btn-rob { background: transparent; border: 2px solid var(--accent); color: var(--accent); }
+        .btn-rob:hover { background: var(--accent); color: white; }
+        .btn-withdraw { background: transparent; color: #7f8c8d; font-size: 0.8rem; text-decoration: underline; }
+        #status { text-align: center; font-size: 0.8rem; margin-top: 15px; color: var(--bright-green); }
+        .network-warn { color: #e74c3c; font-size: 0.7rem; text-align: center; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>SHERWOOD FOREST</h1>
+        <div class="subtitle">Rob from the Sheriff, give to the poor</div>
+
+        <div id="statArea">
+            <div class="stat-card"><span class="stat-label">Treasury Gold</span><span class="stat-value" id="treasuryEth">0.00 ETH</span></div>
+            <div class="stat-card"><span class="stat-label">Arrow Value</span><span class="stat-value" id="arrowPrice">1.0000 ETH</span></div>
+            <div class="stat-card"><span class="stat-label">Your Quiver</span><span class="stat-value" id="userArrows">0.00 ARROW</span></div>
+        </div>
+
+        <div class="action-group">
+            <button id="connectBtn" class="btn-deposit">Connect Wallet</button>
+            
+            <div id="ui" style="display:none;">
+                <input type="number" id="amt" placeholder="Amount of ETH" step="0.01">
+                <input type="text" id="ref" placeholder="Referrer Address (Optional)">
+                <button onclick="doDeposit()" class="btn-deposit">Join Merry Men</button>
+                
+                <button onclick="doRob()" class="btn-rob">⚔️ Rob the Sheriff</button>
+                <div id="status">Ready for action...</div>
+
+                <hr style="border:0; border-top: 1px solid #333; margin: 20px 0;">
+                <input type="number" id="wAmt" placeholder="Arrows to withdraw">
+                <button onclick="doWithdraw()" class="btn-withdraw">Return to Village (Withdraw)</button>
+            </div>
+        </div>
+        <div class="network-warn">Network: Robinhood Chain Testnet (Chain ID 46630)</div>
+    </div>
+
+<script>
+    const ADDR = "0xd435e6D506424AdA0A3BBc06e6d3E3Bf5E2C157D";
+    const ABI = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"villager","type":"address"},{"indexed":false,"internalType":"uint256","name":"ethAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"arrowsMinted","type":"uint256"},{"indexed":false,"internalType":"address","name":"referrer","type":"address"}],"name":"GoldDeposited","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"villager","type":"address"},{"indexed":false,"internalType":"uint256","name":"arrowsBurned","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"ethReturned","type":"uint256"}],"name":"GoldWithdrawn","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"by","type":"address"},{"indexed":false,"internalType":"uint256","name":"goldStolen","type":"uint256"}],"name":"SheriffRobbed","type":"event"},{"inputs":[],"name":"REFERRAL_BONUS_BPS","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"referrer","type":"address"}],"name":"deposit","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"lastRobbery","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pricePerArrow","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"referrers","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"robTheSheriff","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalGhostGold","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalTreasuryValue","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"arrowAmount","type":"uint256"}],"name":"withdraw","outputs":[],"stateMutability":"nonpayable","type":"function"},{"stateMutability":"payable","type":"receive"}];
+
+    let contract, signer;
+
+    async function connect() {
+        if (!window.ethereum) return alert("Install MetaMask");
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        signer = await provider.getSigner();
+        contract = new ethers.Contract(ADDR, ABI, signer);
+        document.getElementById('ui').style.display = 'block';
+        document.getElementById('connectBtn').style.display = 'none';
+        refresh();
+        setInterval(refresh, 20000);
+    }
+
+    async function refresh() {
+        try {
+            const [val, price, bal] = await Promise.all([
+                contract.totalTreasuryValue(),
+                contract.pricePerArrow(),
+                contract.balanceOf(await signer.getAddress())
+            ]);
+            document.getElementById('treasuryEth').innerText = ethers.formatEther(val).substring(0,6) + " ETH";
+            document.getElementById('arrowPrice').innerText = ethers.formatEther(price).substring(0,6) + " ETH";
+            document.getElementById('userArrows').innerText = ethers.formatEther(bal).substring(0,6) + " ARROW";
+        } catch(e) { console.error(e); }
+    }
+
+    async function doDeposit() {
+        const eth = document.getElementById('amt').value;
+        const ref = document.getElementById('ref').value || "0x0000000000000000000000000000000000000000";
+        const tx = await contract.deposit(ref, { value: ethers.parseEther(eth) });
+        msg("Joining the camp...");
+        await tx.wait();
+        msg("Welcome to Sherwood!");
+        refresh();
+    }
+
+    async function doRob() {
+        try {
+            const tx = await contract.robTheSheriff();
+            msg("Ambushing the carriage...");
+            await tx.wait();
+            msg("Loot secured! Price increased.");
+            refresh();
+        } catch(e) { msg("Sheriff's guards are alert! Try later."); }
+    }
+
+    async function doWithdraw() {
+        const amt = ethers.parseEther(document.getElementById('wAmt').value);
+        const tx = await contract.withdraw(amt);
+        msg("Returning gold...");
+        await tx.wait();
+        msg("Back in the village.");
+        refresh();
+    }
+
+    function msg(m) { document.getElementById('status').innerText = m; }
+    document.getElementById('connectBtn').onclick = connect;
+</script>
+</body>
+</html>
