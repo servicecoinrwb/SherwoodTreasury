@@ -15,7 +15,8 @@
         .btn { width: 100%; padding: 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; margin-top: 15px; transition: 0.3s; }
         .btn-gold { background: var(--gold); color: black; }
         .btn-gold:hover { background: #d4ac0d; transform: scale(1.02); }
-        #status { text-align: center; font-size: 0.8rem; margin-top: 15px; color: var(--arrow-green); }
+        #status { text-align: center; font-size: 0.8rem; margin-top: 15px; color: var(--arrow-green); min-height: 1.2em; }
+        input { width: 100%; padding: 12px; background: #222; border: 1px solid #444; color: white; margin-top: 10px; box-sizing: border-box; }
     </style></head><body>
 
     <div class="container">
@@ -30,16 +31,15 @@
         <button id="connectBtn" class="btn btn-gold">Connect Outlaw Wallet</button>
         
         <div id="ui" style="display:none;">
-            <input type="number" id="amt" style="width:100%; padding:12px; background:#222; border:none; color:white; margin-top:10px;" placeholder="ETH to Stake">
+            <input type="number" id="amt" placeholder="ETH to Stake" step="0.01">
             <button onclick="doDeposit()" class="btn btn-gold">Join Merry Men</button>
             <button onclick="doRob()" class="btn" style="background:transparent; border:1px solid var(--gold); color:var(--gold);">⚔️ Rob the Sheriff</button>
             <div id="status">Ready for ambush...</div>
         </div>
     </div><script>
-    // PASTE YOUR NEW QUIVER TOKEN ADDRESS HERE
-    const QUIVER_ADDR = "PASTE_YOUR_QUIVER_TOKEN_ADDRESS"; 
-    // YOUR UPDATED CONTRACT ADDRESS
-    const ARROW_TREASURY = "0x10F7Efb4Bd544E0436dD4bACe5bf7284D75ea44e"; 
+    // --- UPDATED CONFIGURATION ---
+    const QUIVER_ADDR = "0x10F7Efb4Bd544E0436dD4bACe5bf7284D75ea44e"; // Your newly deployed contract
+    const ARROW_TREASURY = "0xd435e6D506424AdA0A3BBc06e6d3E3Bf5E2C157D"; 
     
     const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
     const TREASURY_ABI = [
@@ -50,45 +50,93 @@
 
     let provider, signer, quiverContract, arrowContract;
 
+    // --- CONNECTION LOGIC ---
     async function connect() {
-        if (!window.ethereum) return alert("Install MetaMask!");
-        provider = new ethers.BrowserProvider(window.ethereum);
-        await provider.send("eth_requestAccounts", []);
-        signer = await provider.getSigner();
+        if (!window.ethereum) return alert("MetaMask not found! Open this on a browser with MetaMask.");
         
-        quiverContract = new ethers.Contract(QUIVER_ADDR, ERC20_ABI, signer);
-        arrowContract = new ethers.Contract(ARROW_TREASURY, TREASURY_ABI, signer);
+        try {
+            document.getElementById('status').innerText = "Connecting to wallet...";
+            
+            // Forces MetaMask to show the account selection window
+            await window.ethereum.request({ method: "eth_requestAccounts" });
+            
+            provider = new ethers.BrowserProvider(window.ethereum); // Updated for v6
+            signer = await provider.getSigner();
+            
+            const network = await provider.getNetwork();
+            if (network.chainId !== 46630n) {
+                alert("Switch MetaMask to Robinhood Testnet (Chain ID 46630)");
+                return;
+            }
 
-        document.getElementById('ui').style.display = 'block';
-        document.getElementById('connectBtn').style.display = 'none';
-        refresh();
-        setInterval(refresh, 15000); 
+            quiverContract = new ethers.Contract(QUIVER_ADDR, ERC20_ABI, signer);
+            arrowContract = new ethers.Contract(ARROW_TREASURY, TREASURY_ABI, signer);
+
+            document.getElementById('ui').style.display = 'block';
+            document.getElementById('connectBtn').style.display = 'none';
+            document.getElementById('status').innerText = "Connected to Sherwood!";
+            
+            refresh();
+            setInterval(refresh, 15000); 
+        } catch (e) {
+            console.error(e);
+            document.getElementById('status').innerText = "Connection failed. Try again.";
+        }
     }
 
+    // --- REFRESH BALANCES ---
     async function refresh() {
-        const addr = await signer.getAddress();
-        const [eth, arrows, quiver] = await Promise.all([
-            provider.getBalance(addr),
-            arrowContract.balanceOf(addr),
-            quiverContract.balanceOf(addr).catch(() => 0n) // Handles if QUIVER isn't deployed yet
-        ]);
+        try {
+            const addr = await signer.getAddress();
+            const [eth, arrows, quiver] = await Promise.all([
+                provider.getBalance(addr),
+                arrowContract.balanceOf(addr),
+                quiverContract.balanceOf(addr).catch(() => 0n) // Safety if QUIVER isn't deployed yet
+            ]);
 
-        document.getElementById('userEth').innerText = ethers.formatEther(eth).substring(0,6) + " ETH";
-        document.getElementById('userArrows').innerText = ethers.formatEther(arrows).substring(0,6) + " ARROW";
-        document.getElementById('userQuiver').innerText = ethers.formatUnits(quiver, 18).toLocaleString() + " QUIVER";
+            document.getElementById('userEth').innerText = ethers.formatEther(eth).substring(0,8) + " ETH";
+            document.getElementById('userArrows').innerText = ethers.formatEther(arrows).substring(0,6) + " ARROW";
+            document.getElementById('userQuiver').innerText = ethers.formatUnits(quiver, 18).toLocaleString() + " QUIVER";
+        } catch (err) {
+            console.warn("Refresh failed: ", err);
+        }
     }
 
+    // --- CONTRACT ACTIONS ---
     async function doDeposit() {
-        const val = document.getElementById('amt').value;
-        const tx = await arrowContract.deposit("0x0000000000000000000000000000000000000000", { value: ethers.parseEther(val) });
-        await tx.wait();
-        refresh();
+        try {
+            const val = document.getElementById('amt').value;
+            if(!val || val <= 0) return alert("Enter an amount!");
+            
+            const tx = await arrowContract.deposit(ethers.ZeroAddress, { 
+                value: ethers.parseEther(val) 
+            });
+            document.getElementById('status').innerText = "Riding into the forest...";
+            await tx.wait(); // Wait for confirmation
+            document.getElementById('status').innerText = "Success! You are a Merry Man.";
+            refresh();
+        } catch (e) {
+            document.getElementById('status').innerText = "Deposit failed. Insufficient ETH?";
+        }
     }
 
     async function doRob() {
-        const tx = await arrowContract.robTheSheriff();
-        await tx.wait();
-        refresh();
+        try {
+            const tx = await arrowContract.robTheSheriff();
+            document.getElementById('status').innerText = "Ambushing the Sheriff...";
+            await tx.wait();
+            document.getElementById('status').innerText = "Loot secured! Price pumped.";
+            refresh();
+        } catch (e) {
+            document.getElementById('status').innerText = "Sheriff's guards are alert! Try later.";
+        }
     }
 
-    document.getElementById('connectBtn').onclick = connect;</script></body></html>
+    // Listeners for account/network changes
+    if (window.ethereum) {
+        window.ethereum.on('accountsChanged', () => window.location.reload());
+        window.ethereum.on('chainChanged', () => window.location.reload());
+    }
+
+    document.getElementById('connectBtn').onclick = connect;
+</script></body></html>
