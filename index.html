@@ -17,17 +17,8 @@
         button { width: 100%; padding: 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; text-transform: uppercase; margin-top: 10px; transition: 0.2s; }
         .btn-gold { background: var(--gold); color: black; }
         .btn-rob { background: transparent; border: 2px solid var(--accent); color: var(--accent); }
-        .btn-rob:hover { background: var(--accent); color: white; }
-        
-        /* Explainer Section */
-        .explainer { background: var(--paper); color: #333; padding: 15px; border-radius: 8px; margin-top: 25px; border: 2px solid #d4c4a8; line-height: 1.4; }
-        .explainer h3 { margin-top: 0; color: #5d4037; border-bottom: 1px solid #d4c4a8; padding-bottom: 5px; }
-        .explainer p { font-size: 0.85rem; margin-bottom: 10px; }
-        .explainer ul { padding-left: 20px; font-size: 0.85rem; }
-        .explainer li { margin-bottom: 5px; }
-        
-        #status { text-align: center; font-size: 0.85rem; margin-top: 15px; color: #2ecc71; font-weight: bold; }
-        .faucet-link { font-size: 0.75rem; color: var(--gold); text-align: center; display: block; margin-top: 15px; text-decoration: underline; }
+        #status { text-align: center; font-size: 0.85rem; margin-top: 15px; color: #2ecc71; font-weight: bold; min-height: 1.2em; }
+        .explainer { background: var(--paper); color: #333; padding: 15px; border-radius: 8px; margin-top: 25px; font-size: 0.85rem; }
     </style>
 </head>
 <body>
@@ -41,27 +32,21 @@
             <div class="stat-card"><span class="stat-label">1 Arrow = </span><span class="stat-value" id="arrowPrice">1.0000 ETH</span></div>
         </div>
 
-        <button id="connectBtn" class="btn-gold">Connect Wallet</button>
+        <button id="connectBtn" class="btn-gold">Connect Outlaw Wallet</button>
+        <button id="switchNetBtn" class="btn-rob" style="display:none;">Switch to Robinhood Chain</button>
         
         <div id="ui" style="display:none;">
             <input type="number" id="amt" placeholder="Gold (ETH) to Stake" step="0.01">
             <button onclick="doDeposit()" class="btn-gold">Join Merry Men</button>
             <button onclick="doRob()" class="btn-rob">⚔️ Rob the Sheriff</button>
-            <div id="status">Waiting for an outlaw...</div>
-            
-            <a href="https://docs.robinhood.com/chain/connecting/" target="_blank" class="faucet-link">Need Testnet ETH? Get it here.</a>
+            <div id="status">Ready...</div>
         </div>
 
         <div class="explainer">
             <h3>📜 Scroll of Wisdom</h3>
-            <p>Welcome to Sherwood, villager. Here is how we build our fortune:</p>
-            <ul>
-                <li><strong>Join the Camp:</strong> Deposit ETH to get <b>ARROW</b> tokens. Your arrows represent your share of the forest's gold.</li>
-                <li><strong>Rob the Sheriff:</strong> Every 60 seconds, an outlaw can ambush the Sheriff's carriage. This adds "Ghost Gold" to the forest, increasing the <b>Arrow Price</b> for everyone!</li>
-                <li><strong>Profit:</strong> As more outlaws rob the Sheriff, your ARROWs become worth more ETH. You can withdraw more than you put in.</li>
-                <li><strong>Strategy:</strong> Rob the Sheriff often to pump your own holdings!</li>
-            </ul>
-            <p><small><i>*Requires Robinhood Chain Testnet (ChainID: 46630)</i></small></p>
+            <p>1. Deposit ETH to get <b>ARROW</b> tokens.<br>
+               2. <b>Rob the Sheriff</b> to pump the price for everyone!<br>
+               3. Higher price = more ETH when you eventually withdraw.</p>
         </div>
     </div>
 
@@ -71,29 +56,59 @@
 
     let contract, signer, provider;
 
-    async function connect() {
-        if (!window.ethereum) return alert("Install MetaMask Outlaw!");
+    async function init() {
+        if (!window.ethereum) return msg("❌ Install MetaMask");
         provider = new ethers.BrowserProvider(window.ethereum);
         
-        const network = await provider.getNetwork();
-        if (network.chainId !== 46630n) {
-            msg("❌ SWITCH TO ROBINHOOD TESTNET!");
-            return;
-        }
+        // Handle account changes
+        window.ethereum.on('accountsChanged', () => window.location.reload());
+        window.ethereum.on('chainChanged', () => window.location.reload());
+    }
 
-        signer = await provider.getSigner();
-        contract = new ethers.Contract(ADDR, ABI, signer);
-        document.getElementById('ui').style.display = 'block';
-        document.getElementById('connectBtn').style.display = 'none';
-        refresh();
-        setInterval(refresh, 15000);
+    async function connect() {
+        try {
+            await provider.send("eth_requestAccounts", []);
+            const network = await provider.getNetwork();
+            
+            if (network.chainId !== 46630n) {
+                document.getElementById('switchNetBtn').style.display = 'block';
+                return msg("❌ Wrong Network!");
+            }
+
+            signer = await provider.getSigner();
+            contract = new ethers.Contract(ADDR, ABI, signer);
+            
+            document.getElementById('ui').style.display = 'block';
+            document.getElementById('connectBtn').style.display = 'none';
+            document.getElementById('switchNetBtn').style.display = 'none';
+            
+            refresh();
+            setInterval(refresh, 10000);
+        } catch (e) {
+            console.error(e);
+            msg("❌ Connection Failed");
+        }
+    }
+
+    async function switchNetwork() {
+        try {
+            await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [{
+                    chainId: "0xB626", // 46630 in hex
+                    chainName: "Robinhood Chain Testnet",
+                    rpcUrls: ["https://rpc.testnet.chain.robinhood.com"],
+                    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+                    blockExplorerUrls: ["https://explorer.testnet.chain.robinhood.com"]
+                }]
+            });
+        } catch (e) { msg("❌ Switch Failed"); }
     }
 
     async function refresh() {
         try {
             const userAddr = await signer.getAddress();
             const walletBal = await provider.getBalance(userAddr);
-            
             const p = await contract.pricePerArrow();
             const q = await contract.balanceOf(userAddr);
             
@@ -105,29 +120,32 @@
 
     async function doDeposit() {
         try {
-            const eth = document.getElementById('amt').value;
-            const tx = await contract.deposit("0x0000000000000000000000000000000000000000", { 
-                value: ethers.parseEther(eth) 
-            });
-            msg("Riding to the camp...");
+            const val = document.getElementById('amt').value;
+            if(!val || val <= 0) return msg("Enter an amount!");
+            const tx = await contract.deposit(ethers.ZeroAddress, { value: ethers.parseEther(val) });
+            msg("⚔️ Heading to Sherwood...");
             await tx.wait();
-            msg("Gold Secured!");
+            msg("✅ Gold Staked!");
             refresh();
-        } catch(e) { msg("Error: Not enough gold/gas!"); }
+        } catch(e) { msg("❌ Deposit Failed"); }
     }
 
     async function doRob() {
         try {
             const tx = await contract.robTheSheriff();
-            msg("⚔️ AMBUSH IN PROGRESS...");
+            msg("🏹 AMBUSHING...");
             await tx.wait();
-            msg("Victory! Price Pumped.");
+            msg("✅ Loot Distributed!");
             refresh();
-        } catch(e) { msg("Sheriff's guards are alert! Wait."); }
+        } catch(e) { msg("❌ Sheriff is Alert!"); }
     }
 
     function msg(m) { document.getElementById('status').innerText = m; }
+    
     document.getElementById('connectBtn').onclick = connect;
+    document.getElementById('switchNetBtn').onclick = switchNetwork;
+    
+    init(); // Setup account listeners
 </script>
 </body>
 </html>
